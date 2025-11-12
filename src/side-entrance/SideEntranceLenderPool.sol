@@ -35,6 +35,7 @@ contract SideEntranceLenderPool {
     function flashLoan(uint256 amount) external {
         uint256 balanceBefore = address(this).balance;
 
+        // @audit function caller can be any contract that implements IFlashLoanEtherReceiver.execute
         IFlashLoanEtherReceiver(msg.sender).execute{value: amount}();
 
         if (address(this).balance < balanceBefore) {

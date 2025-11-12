@@ -8,6 +8,29 @@ import {IERC20} from "@openzeppelin/contracts/interfaces/IERC20.sol";
 import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import {BitMaps} from "@openzeppelin/contracts/utils/structs/BitMaps.sol";
 
+// My Note: This is a typical reward distribution contract using Merkle trees to verify claims.
+// For each token, it maps to a Distribution struct that holds the remaining amount to distribute,
+// the next batch number, the Merkle roots for each batch, and a bitmap to track claimed rewards.
+//
+// Distribution: What is batch number? It is a way to group distributions. Each batch has its OWN Merkle root. 
+// Each Merkle root corresponds to a set of different users and their respective reward amounts. You can think of
+// batch number as different rounds of distributions. Each round has its own set of users and amounts to claim.
+// What is the bitmap for claims? Look at the mapping(address claimer => mapping(uint256 word => uint256 bits)) claims;
+// This is the layout of a bitmap:
+//              word 0   word 1   word 2    ...
+// claimer 1    uint256  uint256  uint256
+//         2    uint256  uint256  uint256
+//      ...     ...      ...      ...
+//
+// Each uint256 word can track 256 claims (1 bit per claim). If a user has claimed their reward for a specific batch,
+// we first calculate wordPosition = batchNumber / 256 and bitPosition = batchNumber % 256.
+// Then we check if the bit at bitPosition in the uint256 at wordPosition is set (1) or not (0).
+// If it's set, the user has already claimed their reward for that batch. If not, they can claim it, and we set that bit to 1 to mark it as claimed.
+// This is a gas-efficient way to track multiple claims without needing a separate boolean for each claim.
+// 
+// So for these claimers, we can track their claims for as many as 2^256 batches!
+// In this case, claimers are the addresses that are eligible to claim rewards.
+
 struct Distribution {
     uint256 remaining;
     uint256 nextBatchNumber;
@@ -77,6 +100,16 @@ contract TheRewarderDistributor {
         }
     }
 
+    // My Note: This function allows users to claim their rewards for multiple tokens in a single transaction.
+    // We can see that the function uses _setClaimed to update the claim status in the bitmap.
+    // So the function updates the claim status in the bitmap only for these two cases:
+    // 1. When the token changes (i.e., we are processing a claim for a different token than the previous one).
+    // 2. When we reach the last claim in the inputClaims array.
+    // But here is a pitfall in the code: In the else branch, amount is accumulative for the same token, and
+    // there is no call to _setClaimed. This means that if a user submits multiple claims for the same token,
+    // they can get away with only the last claim being marked as claimed in the bitmap (with wrong accumulative amount).
+    // And since the Merkle proof verification is done for each individual claim, each claim could potentially succeed.
+    //
     // Allow claiming rewards of multiple tokens in a single transaction
     function claimRewards(Claim[] memory inputClaims, IERC20[] memory inputTokens) external {
         Claim memory inputClaim;
@@ -101,6 +134,7 @@ contract TheRewarderDistributor {
             } else {
                 bitsSet = bitsSet | 1 << bitPosition;
                 amount += inputClaim.amount;
+                // @audit Missing _setClaimed call here for the same token
             }
 
             // for the last claim

@@ -12,6 +12,7 @@ contract FlashLoanReceiver is IERC3156FlashBorrower {
         pool = _pool;
     }
 
+    // @audit checks only the caller is the pool, but no check for the initiator. Any one can borrow on behalf of someone else.
     function onFlashLoan(address, address token, uint256 amount, uint256 fee, bytes calldata)
         external
         returns (bytes32)
