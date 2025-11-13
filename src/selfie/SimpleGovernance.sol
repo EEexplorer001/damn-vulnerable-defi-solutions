@@ -98,6 +98,10 @@ contract SimpleGovernance is ISimpleGovernance {
     }
 
     function _hasEnoughVotes(address who) private view returns (bool) {
+        // @audit how does this getVotes work? In OpenZeppelin's Votes.sol, getVotes returns the current voting power of an account.
+        // Since DamnValuableVotes extends Votes, it inherits this functionality.
+        // Therefore, getVotes(who) returns the *current* voting power of 'who'.
+        // So attacker can borrow tokens via flash loan, gain voting power temporarily, and queue malicious actions.
         uint256 balance = _votingToken.getVotes(who);
         uint256 halfTotalSupply = _votingToken.totalSupply() / 2;
         return balance > halfTotalSupply;
